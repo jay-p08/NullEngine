@@ -1,0 +1,6 @@
+{
+    "C_Cpp.default.compilerPath": "C:/MinGW/bin/g++.exe",
+    "cmake.configureSettings": {
+        "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+    }
+}
