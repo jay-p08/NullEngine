@@ -23,3 +23,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     spdlog::spdlog
     glm::glm
 )
+
+# 실행 파일 경로로 assets 폴더 자동 복사 (편의성)
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:${PROJECT_NAME}>/assets
+)
