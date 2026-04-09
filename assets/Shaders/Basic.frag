@@ -1,7 +1,12 @@
 #version 450 core
+out vec4 FragColor;
 
-layout(location = 0) out vec4 color;
+in vec2 v_TexCoord;
+
+uniform sampler2D u_Texture;
+uniform vec4 u_Color; // 색상 조절 변수 추가!
 
 void main() {
-    color = vec4(0.8, 0.2, 0.3, 1.0); // 예쁜 핑크색 삼각형
+    // 텍스처 색상에 u_Color를 곱합니다. (일반 색상 사각형을 그릴 때 유용함)
+    FragColor = texture(u_Texture, v_TexCoord) * u_Color; 
 }

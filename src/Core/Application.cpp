@@ -1,66 +1,98 @@
-#include "Application.h"
+#include "Core/Application.h"
 
+#include "Core/Log.h"
 #include "Graphics/Shader.h"
-#include "Graphics/Buffer.h"
+#include "Graphics/VertexArray.h"
+#include "Graphics/Renderer.h"
+#include "Graphics/OrthographicCamera.h"
+#include "Graphics/Texture.h"
+#include "Core/Timestep.h"
 
-#include <glad/glad.h>
-#include <memory>
+#include <GLFW/glfw3.h> // glfwGetTime()을 위해 필요할 수 있음
 
 namespace NullEngine
 {
-    Application* Application::s_Instance = nullptr;
-
-    // 렌더링에 필요한 객체들 (나중에 렌더러 클래스로 분리할 예정)
-    static std::unique_ptr<Shader> s_Shader;
-    static std::unique_ptr<VertexBuffer> s_VB;
-    static uint32_t s_VAO; // Vertex Array Object
+    Application *Application::s_Instance = nullptr;
 
     Application::Application()
     {
         s_Instance = this;
-        m_Window = std::make_unique<Window>(WindowProps("Null Engine", 1280, 720));
-
-        // 1. 삼각형 데이터 (NDC 좌표계: -1.0 ~ 1.0)
-        float vertices[3 * 3] = {
-            -0.5f, -0.5f, 0.0f, // 좌측 하단
-            0.5f, -0.5f, 0.0f,  // 우측 하단
-            0.0f, 0.5f, 0.0f    // 중앙 상단
-        };
-
-        // 2. VAO 생성 (데이터의 해석 방법을 저장하는 객체)
-        glCreateVertexArrays(1, &s_VAO);
-        glBindVertexArray(s_VAO);
-
-        // 3. VBO 생성 및 데이터 할당
-        s_VB = std::make_unique<VertexBuffer>(vertices, sizeof(vertices));
-
-        // 4. Vertex Attribute 설정 (중요: 데이터가 어떻게 구성되어 있는지 GPU에 알려줌)
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (const void *)0);
-
-        // 5. Shader 생성 (아까 만든 파일 경로 입력)
-        s_Shader = std::make_unique<Shader>("assets/Shaders/Basic.vert", "assets/Shaders/Basic.frag");
+        m_Window = std::make_unique<Window>("Null Engine Game", 1280, 720);
     }
-    Application::~Application()
-    {
-        // 소멸자 내용이 비어있더라도 정의는 반드시 있어야 합니다!
-    }
+
+    Application::~Application() {}
 
     void Application::Run()
     {
+        Renderer::Init();
+
+        // 1. 점 데이터에 UV 좌표(U, V) 추가! (총 5개씩)
+        float vertices[] = {
+            // 위치 (X, Y, Z)     // 텍스처 좌표 (U, V)
+            -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, // 좌측 하단
+            0.5f, -0.5f, 0.0f, 1.0f, 0.0f,  // 우측 하단
+            0.5f, 0.5f, 0.0f, 1.0f, 1.0f,   // 우측 상단
+            -0.5f, 0.5f, 0.0f, 0.0f, 1.0f   // 좌측 상단
+        };
+
+        uint32_t indices[] = {0, 1, 2, 2, 3, 0};
+
+        auto va = std::make_shared<VertexArray>();
+        auto vb = std::make_shared<VertexBuffer>(vertices, (uint32_t)sizeof(vertices));
+
+        // 2. 엔진의 힘! 레이아웃에 Float2(aTexCoord)를 한 줄만 추가하면 알아서 계산됩니다.
+        vb->SetLayout({
+            {ShaderDataType::Float3, "aPos"},
+            {ShaderDataType::Float2, "aTexCoord"} // 추가!
+        });
+
+        va->AddVertexBuffer(vb);
+        auto ib = std::make_shared<IndexBuffer>(indices, 6);
+        va->SetIndexBuffer(ib);
+
+        auto shader = std::make_shared<Shader>("assets/Shaders/Basic.vert", "assets/Shaders/Basic.frag");
+
+        // 3. 텍스처 불러오기 (이미지 파일 이름은 본인이 저장한 이름으로 바꾸세요!)
+        Texture2D texture("assets/Textures/logo.png");
+
+        OrthographicCamera camera(-1.6f, 1.6f, -0.9f, 0.9f);
+        float lastFrameTime = 0.0f;
+
         while (m_Running)
         {
-            glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
+            float time = (float)glfwGetTime();
+            Timestep timestep = time - lastFrameTime;
+            lastFrameTime = time;
 
-            // 6. 그리기!
-            s_Shader->Bind();
-            glBindVertexArray(s_VAO);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            Renderer::Clear(0.1f, 0.1f, 0.1f, 1.0f);
 
-            m_Window->OnUpdate();
+            float moveSpeed = 5.0f;
+            if (glfwGetKey(m_Window->GetNativeWindow(), GLFW_KEY_A) == GLFW_PRESS)
+                camera.SetPosition({camera.GetPosition().x - moveSpeed * timestep, camera.GetPosition().y, 0.0f});
+            if (glfwGetKey(m_Window->GetNativeWindow(), GLFW_KEY_D) == GLFW_PRESS)
+                camera.SetPosition({camera.GetPosition().x + moveSpeed * timestep, camera.GetPosition().y, 0.0f});
+
+            Renderer::BeginScene();
+
+            shader->Bind();
+            shader->SetMat4("u_ViewProjection", camera.GetViewProjectionMatrix());
+
+            // 4. 텍스처를 0번 슬롯에 바인딩하고 쉐이더에 알려주기
+            texture.Bind(0);
+            shader->SetInt("u_Texture", 0);
+
+            Renderer::Submit(shader, va);
+            Renderer::EndScene();
+
             if (m_Window->ShouldClose())
                 m_Running = false;
+
+            m_Window->OnUpdate();
         }
+    }
+
+    void Application::Close()
+    {
+        m_Running = false;
     }
 }
